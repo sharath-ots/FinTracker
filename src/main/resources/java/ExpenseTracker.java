@@ -10,7 +10,9 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ExpenseTracker {
     private static List<Expense> expenses = new ArrayList<>();
@@ -31,7 +33,6 @@ public class ExpenseTracker {
             } else if ("POST".equals(method)) {
                 handlePostRequest(exchange);
             }
-            
         }
         
         private void handleGetRequest(HttpExchange exchange) throws IOException {
@@ -41,12 +42,12 @@ public class ExpenseTracker {
         
         private void handlePostRequest(HttpExchange exchange) throws IOException {
             String formData = new String(exchange.getRequestBody().readAllBytes());
-            System.out.println(formData);
             String[] pairs = formData.split("&");
 
             double amount = 0;
             String details = "";
             String dateString = "";
+            String type = "";
 
             for (String pair : pairs) {
                 String[] keyValue = pair.split("=");
@@ -59,6 +60,8 @@ public class ExpenseTracker {
                     details = value;
                 } else if ("date".equals(key)) {
                     dateString = value;
+                } else if ("type".equals(key)) {
+                    type = value;
                 }
             }
 
@@ -70,10 +73,10 @@ public class ExpenseTracker {
                 throw new IOException("Error date:" + e.getMessage());
             }
 
-            Expense expense = new Expense(amount, details, date);
-            expenses.add(expense);
-            
-            
+                Expense expense = new Expense(amount, details, date, type);
+                expenses.add(expense);
+           
+
             String response = readHtmlFile("index.html");
             response = response.replace("<!-- Add Expense -->", getExpenseRows());
             sendResponse(exchange, response);
@@ -109,30 +112,54 @@ public class ExpenseTracker {
         }
 
         private String getExpenseRows() {
-            StringBuilder rows = new StringBuilder();
+        	 StringBuilder rows = new StringBuilder();
 
-            for (Expense expense : expenses) {
-                rows.append("<tr>")
-                        .append("<td>").append(expense.getAmount()).append("</td>")
-                        .append("<td>").append(expense.getDetails()).append("</td>")
-                        .append("<td>").append(expense.getDate()).append("</td>")
-                        .append("</tr>");
-                System.out.println(rows);
-            }
+        	    // Map to store expenses grouped by date
+        	    Map<String, List<Expense>> expensesByDate = new LinkedHashMap<>();
 
-            return rows.toString();
+        	    // Group expenses by date
+        	    for (Expense expense : expenses) {
+        	        String dateKey = expense.getDate(); // Assuming date is represented as a string
+        	        List<Expense> expensesOnDate = expensesByDate.getOrDefault(dateKey, new ArrayList<>());
+        	        expensesOnDate.add(expense);
+        	        expensesByDate.put(dateKey, expensesOnDate);
+        	    }
+
+        	    // Generate rows for each date
+        	    for (Map.Entry<String, List<Expense>> entry : expensesByDate.entrySet()) {
+        	        String date = entry.getKey();
+        	        List<Expense> expensesOnDate = entry.getValue();
+
+        	        rows.append("<tr><th colspan=\"4\">").append(date).append("</th></tr>");
+
+        	        for (Expense expense : expensesOnDate) {
+        	            String rowType = expense.getType().startsWith("expense") ? "<tr class=\"expense\">" : "<tr class=\"income\">";
+        	            rows.append(rowType)
+        	                .append("<td>").append(expense.getAmount()).append("</td>")
+        	                .append("<td>").append(expense.getDetails()).append("</td>")
+        	                .append("<td>").append(expense.getDate()).append("</td>")
+        	                .append("<td>").append(expense.getType()).append("</td>")
+        	                .append("</tr>");
+        	        }
+        	    }
+
+        	    return rows.toString();
         }
+
+       
     }
 
     static class Expense {
         private double amount;
         private String details;
         private Date date;
+        private String type;
 
-        public Expense(double amount, String details, Date date) {
+        public Expense(double amount, String details, Date date, String type) {
             this.amount = amount;
             this.details = details;
             this.date = date;
+            this.type = type;
         }
 
         public double getAmount() {
@@ -146,6 +173,9 @@ public class ExpenseTracker {
         public String getDate() {
             SimpleDateFormat dateFormat = new SimpleDateFormat("dd MMM, yyyy");
             return dateFormat.format(date);
+        }
+        public String getType() {
+            return type;
         }
     }
 }
